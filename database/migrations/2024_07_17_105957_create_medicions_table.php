@@ -16,7 +16,6 @@ class CreateMedicionsTable extends Migration
             $table->float('medicion');
             $table->float('consumo')->nullable();
             $table->date('fecha');
-            $table->string('foto_medidor');
             $table->unsignedBigInteger('estado_id');
             $table->timestamps();
         });
