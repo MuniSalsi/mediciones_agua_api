@@ -12,4 +12,5 @@ Route::prefix('mediciones')->group(function () {
     Route::post('/upload', [MedicionController::class, 'upload'])->name("api.medidor_upload");
     Route::get('/login', [AuthController::class, 'login'])->name('api.login');
     Route::get('/logut', [AuthController::class, 'logout'])->name('api.logout');
+    Route::get('/imagen/{nroCuenta}/{fecha}', [MedicionController::class, 'obtenerImagenPorCuentaYFecha'])->name('api.medidor_imagen');
 });

@@ -22,6 +22,28 @@ class MedicionController extends Controller
 
         $mediciones = [];
         foreach ($listadoMediciones as $medicion) {
+            // Obtener el número de cuenta y la fecha para la búsqueda de imágenes
+            $numeroCuenta = $medicion->nro_cuenta;
+            $fecha = $medicion->fecha;
+
+            // Construir el nombre base del archivo
+            $nombreArchivoBase = 'Lectura_' . $numeroCuenta . '_' . $fecha;
+
+            // Construir la ruta del directorio en el almacenamiento
+            $rutaDirectorio = 'public/mediciones/' . $numeroCuenta;
+            $archivos = Storage::files($rutaDirectorio);
+
+            // Filtrar los archivos que coincidan con el formato
+            $archivosEncontrados = array_filter($archivos, function ($archivo) use ($nombreArchivoBase) {
+                return strpos(basename($archivo), $nombreArchivoBase) === 0;
+            });
+
+            // Obtener las URLs públicas de los archivos encontrados
+            $urlsPublicas = array_map(function ($archivo) {
+                return Storage::url($archivo);
+            }, $archivosEncontrados);
+
+            // Preparar los datos de la medición
             $data = [
                 'id' => $medicion->id,
                 'nro_cuenta' => $medicion->nro_cuenta,
@@ -30,8 +52,8 @@ class MedicionController extends Controller
                 'medicion' => $medicion->medicion,
                 'consumo' => $medicion->consumo,
                 'fecha' => $medicion->fecha,
-                'foto_medidor' => $medicion->foto_medidor,
                 'estado' => $medicion->estado_id,
+                'imagenes' => $urlsPublicas, // Agregar URLs de imágenes
             ];
 
             $mediciones[] = $data;
@@ -39,7 +61,6 @@ class MedicionController extends Controller
 
         return response()->json($mediciones);
     }
-
     public function store(Request $request)
     {
         // Validar los datos de entrada
@@ -232,217 +253,40 @@ class MedicionController extends Controller
         ]);
     }
 
-    // guarda las url:
-    // public function upload(Request $request)
-    // {
-    //     // Verificar si se recibe un request multipart/form-data
-    //     if (!$request->isMethod('post') || !$request->hasFile('images')) {
-    //         Log::error('Se esperaba un request multipart/form-data con imágenes');
-    //         return response()->json([
-    //             'status' => 'error',
-    //             'message' => 'Se esperaba un request multipart/form-data con imágenes'
-    //         ], 400);
-    //     }
+    public function obtenerImagenPorCuentaYFecha($numeroCuenta, $fecha)
+    {
+        // Buscar el registro en la base de datos
+        $mediciones = Medicion::where('nro_cuenta', $numeroCuenta)
+            ->whereDate('fecha', $fecha)
+            ->get();
 
-    //     // Verificar y decodificar JSON
-    //     $medicionesJson = $request->input('mediciones');
-    //     if (!$medicionesJson) {
-    //         Log::error('Se esperaba JSON en el campo "mediciones"');
-    //         return response()->json([
-    //             'status' => 'error',
-    //             'message' => 'Se esperaba JSON en el campo "mediciones"'
-    //         ], 400);
-    //     }
+        // Verificar si se encontraron registros
+        if ($mediciones->isEmpty()) {
+            return response()->json(['error' => 'No se encontraron registros'], 404);
+        }
 
-    //     $data = json_decode($medicionesJson, true);
-    //     if (json_last_error() !== JSON_ERROR_NONE) {
-    //         Log::error('Error al decodificar JSON', ['error' => json_last_error_msg()]);
-    //         return response()->json([
-    //             'status' => 'error',
-    //             'message' => 'Error al decodificar JSON',
-    //             'error' => json_last_error_msg()
-    //         ], 400);
-    //     }
+        // Construir el nombre del archivo basado en el formato
+        $nombreArchivoBase = 'Lectura_' . $numeroCuenta . '_' . $fecha;
 
-    //     // Validar la solicitud
-    //     $validator = Validator::make($data, [
-    //         '*.id' => 'nullable|integer',
-    //         '*.nroCuenta' => 'required|integer',
-    //         '*.ruta' => 'required|integer',
-    //         '*.orden' => 'required|integer',
-    //         '*.medicion' => 'required|numeric',
-    //         '*.consumo' => 'nullable|numeric',
-    //         '*.fecha' => 'nullable|string',
-    //         '*.fotoMedidor' => 'nullable|string',
-    //         '*.estadoId' => 'required|integer',
-    //     ]);
+        // Construir la ruta del directorio en el almacenamiento
+        $rutaDirectorio = 'public/mediciones/' . $numeroCuenta;
+        $archivos = Storage::files($rutaDirectorio);
 
-    //     if ($validator->fails()) {
-    //         Log::error('Datos de entrada inválidos', ['errors' => $validator->errors()]);
-    //         return response()->json([
-    //             'status' => 'error',
-    //             'message' => 'Datos de entrada inválidos',
-    //             'errors' => $validator->errors()
-    //         ], 422); // Unprocessable Entity
-    //     }
+        // Filtrar los archivos que coincidan con el formato
+        $archivosEncontrados = array_filter($archivos, function ($archivo) use ($nombreArchivoBase) {
+            return strpos(basename($archivo), $nombreArchivoBase) === 0;
+        });
 
-    //     // Guardar las mediciones y asignar un marcador de estado para actualización de la URL
-    //     $responses = [];
-    //     $pendingUpdates = [];
+        // Verificar si se encontraron archivos
+        if (empty($archivosEncontrados)) {
+            return response()->json(['error' => 'Archivos no encontrados'], 404);
+        }
 
-    //     foreach ($data as $medicionData) {
-    //         Log::info('Procesando medición', ['data' => $medicionData]);
+        // Obtener las URLs públicas de los archivos encontrados
+        $urlsPublicas = array_map(function ($archivo) {
+            return Storage::url($archivo);
+        }, $archivosEncontrados);
 
-    //         $mappedData = [
-    //             'nro_cuenta' => $medicionData['nroCuenta'],
-    //             'ruta' => $medicionData['ruta'],
-    //             'orden' => $medicionData['orden'],
-    //             'medicion' => $medicionData['medicion'],
-    //             'consumo' => $medicionData['consumo'] ?? null,
-    //             'fecha' => isset($medicionData['fecha']) ? Carbon::parse($medicionData['fecha'])->format('Y-m-d') : null,
-    //             'foto_medidor' => $medicionData['fotoMedidor'] ?? 'pending',  // Marcador de estado para actualizar más tarde
-    //             'estado_id' => $medicionData['estadoId'],
-    //             'subida' => false
-    //         ];
-
-    //         try {
-    //             $medicion = Medicion::create($mappedData);
-    //             Log::info('Medición guardada', ['medicion_id' => $medicion->id]);
-
-    //             $responses[] = [
-    //                 'original_id' => $medicionData['id'] ?? null,
-    //                 'created_id' => $medicion->id,
-    //                 'status' => 'created',
-    //                 'subida' => true
-    //             ];
-
-    //             // Guardar el nombre de la foto para la actualización posterior
-    //             if (isset($medicionData['fotoMedidor'])) {
-    //                 $pendingUpdates[$medicionData['fotoMedidor']] = $medicion->id;
-    //             }
-    //         } catch (\Exception $e) {
-    //             Log::error('Error al guardar medición', ['error' => $e->getMessage()]);
-    //             $responses[] = [
-    //                 'original_id' => $medicionData['id'] ?? null,
-    //                 'status' => 'error',
-    //                 'message' => $e->getMessage(),
-    //                 'subida' => false
-    //             ];
-    //         }
-    //     }
-
-    //     // Manejo de archivos subidos
-    //     if ($request->hasFile('images')) {
-    //         $files = $request->file('images');
-    //         foreach ($files as $file) {
-    //             // Extraer el nombre del archivo original
-    //             $originalName = $file->getClientOriginalName();
-    //             // Generar un nombre único para evitar conflictos
-    //             $filename = time() . '-' . $originalName;
-    //             // Guardar el archivo en el directorio 'public/mediciones'
-    //             $path = $file->storeAs('public/mediciones', $filename);
-
-    //             // Obtener la URL pública del archivo guardado
-    //             $publicUrl = Storage::url('mediciones/' . $filename);
-    //             Log::info('Archivo guardado', ['filename' => $filename, 'public_url' => $publicUrl]);
-
-    //             // Actualizar las mediciones con la URL del archivo
-    //             foreach ($pendingUpdates as $fotoMedidor => $medicionId) {
-    //                 if ($fotoMedidor === $originalName) {
-    //                     try {
-    //                         Medicion::where('id', $medicionId)->update([
-    //                             'foto_medidor' => $publicUrl
-    //                         ]);
-    //                         Log::info('URL de imagen actualizada', ['medicion_id' => $medicionId, 'public_url' => $publicUrl]);
-    //                     } catch (\Exception $e) {
-    //                         Log::error('Error al actualizar URL de imagen', ['error' => $e->getMessage()]);
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //     }
-
-    //     return response()->json([
-    //         'status' => 'success',
-    //         'message' => 'Mediciones procesadas',
-    //         'responses' => $responses
-    //     ]);
-    // }
-
-
-
-
-    // Funcion vieja:
-    // public function upload(Request $request)
-    // {
-    //     // Verificar si se recibe JSON
-    //     if (!$request->isJson()) {
-    //         return response()->json([
-    //             'status' => 'error',
-    //             'message' => 'Se esperaba JSON'
-    //         ], 400);
-    //     }
-
-    //     // Validar la solicitud
-    //     $validator = Validator::make($request->all(), [
-    //         '*.id' => 'nullable|integer',
-    //         '*.nroCuenta' => 'required|integer',
-    //         '*.ruta' => 'required|integer',
-    //         '*.orden' => 'required|integer',
-    //         '*.medicion' => 'required|numeric',
-    //         '*.consumo' => 'nullable|numeric',
-    //         '*.fecha' => 'nullable|string',
-    //         '*.fotoMedidor' => 'nullable|string',
-    //         '*.estadoId' => 'required|integer',
-    //     ]);
-
-    //     if ($validator->fails()) {
-    //         return response()->json([
-    //             'status' => 'error',
-    //             'message' => 'Datos de entrada inválidos',
-    //             'errors' => $validator->errors()
-    //         ], 422); // Unprocessable Entity
-    //     }
-
-    //     $data = $request->all();
-    //     $responses = [];
-
-    //     foreach ($data as $medicionData) {
-    //         $mappedData = [
-    //             'nro_cuenta' => $medicionData['nroCuenta'],
-    //             'ruta' => $medicionData['ruta'],
-    //             'orden' => $medicionData['orden'],
-    //             'medicion' => $medicionData['medicion'],
-    //             'consumo' => $medicionData['consumo'] ?? null,
-    //             'fecha' => isset($medicionData['fecha']) ? Carbon::parse($medicionData['fecha'])->format('Y-m-d') : null,
-    //             'foto_medidor' => $medicionData['fotoMedidor'] ?? null,
-    //             'estado_id' => $medicionData['estadoId'],
-    //             'subida' => false
-    //         ];
-
-    //         try {
-    //             $medicion = Medicion::create($mappedData);
-
-    //             $responses[] = [
-    //                 'original_id' => $medicionData['id'] ?? null,
-    //                 'created_id' => $medicion->id,
-    //                 'status' => 'created',
-    //                 'subida' => true
-    //             ];
-    //         } catch (\Exception $e) {
-    //             $responses[] = [
-    //                 'original_id' => $medicionData['id'] ?? null,
-    //                 'status' => 'error',
-    //                 'message' => $e->getMessage(),
-    //                 'subida' => false
-    //             ];
-    //         }
-    //     }
-
-    //     return response()->json([
-    //         'status' => 'success',
-    //         'message' => 'Mediciones procesadas',
-    //         'responses' => $responses
-    //     ]);
-    // }
+        return response()->json(['urls' => $urlsPublicas]);
+    }
 }
