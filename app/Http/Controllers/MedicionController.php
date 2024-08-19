@@ -61,6 +61,7 @@ class MedicionController extends Controller
 
         return response()->json($mediciones);
     }
+
     public function store(Request $request)
     {
         // Validar los datos de entrada
@@ -289,4 +290,158 @@ class MedicionController extends Controller
 
         return response()->json(['urls' => $urlsPublicas]);
     }
+
+    // Cargar multiples medicions - test:
+    public function cargarMediciones(Request $request)
+    {
+        $data = $request->input('mediciones');
+
+        if (!is_array($data) || empty($data)) {
+            return response()->json(['message' => 'No se recibieron datos válidos.'], 400);
+        }
+
+        try {
+            foreach ($data as $item) {
+                // Guarda los datos sin validación
+                Medicion::updateOrCreate(
+                    ['nro_cuenta' => $item['nro_cuenta'], 'fecha' => $item['fecha']], // Busca el registro por estos campos
+                    $item // Campos a guardar
+                );
+            }
+
+            return response()->json(['message' => 'Mediciones cargadas con éxito.'], 200);
+        } catch (\Exception $e) {
+
+            Log::error('Error al cargar mediciones: ' . $e->getMessage());
+
+            return response()->json(['message' => 'Error al cargar mediciones.'], 500);
+        }
+    }
+
+    public function exportarMediciones()
+    {
+        // Define el formato de fecha para el archivo
+        $fecha = Carbon::now()->format('Y-m-d-H_i');
+        $filename = "Export_mediciones_$fecha.txt";
+        $filePath = storage_path("app/public/$filename");
+
+        // Abre el archivo para escritura
+        $file = fopen($filePath, 'w');
+
+        // Escribe el encabezado del archivo
+        // fwrite($file, "ruta,indice,categoria,orden,,nro_cuenta,,medicion,,,,anomalia,,,fecha,hora,periodo,tipo_servicio,0\n");
+
+        // Consulta los datos
+        $mediciones = DB::table('mediciones')
+            ->select('ruta', 'orden', 'nro_cuenta', 'medicion', 'fecha', 'estado_id', 'created_at')
+            ->get();
+
+        // Inicializa el índice
+        $indice = 1;
+
+        // Escribe los datos en el archivo
+        foreach ($mediciones as $medicion) {
+            // Calcula el valor de 'anomalia' basado en 'estado_id'
+            $anomalia = '0000';
+            switch ($medicion->estado_id) {
+                case 1:
+                    $anomalia = '0000';
+                    break;
+                case 2:
+                    $anomalia = '0001';
+                    break;
+                case 3:
+                    $anomalia = '0002';
+                    break;
+                case 4:
+                    $anomalia = '0003';
+                    break;
+                case 5:
+                    $anomalia = '0004';
+                    break;
+                case 6:
+                    $anomalia = '0005';
+                    break;
+            }
+
+            // Formatea la fecha y hora
+            $fecha = Carbon::parse($medicion->created_at)->format('Y-m-d');
+            $hora = Carbon::parse($medicion->created_at)->format('H:i:s');
+            $periodo = '999';
+            $tipo_servicio = 'Servicio de Agua';
+            // Formatea los datos en el formato CSV
+            $line = sprintf(
+                "%s,%d,%s,%s,,%s,,%s,,,,%s,,,%s,%s,%s,%s,0\n",
+                $medicion->ruta ?? '',
+                $indice++,
+                'OBSA0002', // Categoria fija
+                $medicion->orden ?? '',
+                $medicion->nro_cuenta ?? '',
+                $medicion->medicion ?? '',
+                $anomalia,
+                $fecha,
+                $hora,
+                $periodo,
+                $tipo_servicio
+            );
+
+            fwrite($file, $line);
+        }
+
+        fclose($file);
+
+        // Retorna la respuesta de descarga del archivo
+        return response()->download($filePath)->deleteFileAfterSend(true);
+        // Retorna la ruta del archivo generado
+        // return response()->json([
+        //     'message' => 'Archivo generado con éxito',
+        //     'file' => $filename
+        // ]);
+    }
+
+
+    // public function exportarMediciones()
+    // {
+    //     // Define el formato de fecha para el archivo
+    //     $fecha = Carbon::now()->format('Y-m-d_H_i');
+    //     $filename = "Export_mediciones_$fecha.txt";
+    //     $filePath = storage_path("app/public/$filename");
+
+    //     // Abre el archivo para escritura
+    //     $file = fopen($filePath, 'w');
+
+    //     // Escribe el encabezado del archivo
+    //     fwrite($file, "ruta,orden,categoria,nro_cuenta,medicion,fecha,estado_id,tipo_servicio\n");
+
+    //     // Consulta los datos
+    //     $mediciones = DB::table('mediciones')
+    //         ->select('ruta', 'orden', 'nro_cuenta', 'medicion', 'fecha', 'estado_id')
+    //         ->get();
+
+    //     // Escribe los datos en el archivo
+    //     foreach ($mediciones as $medicion) {
+    //         // Formatea los datos en el formato CSV, agregando la categoría y el tipo de servicio
+    //         $line = sprintf(
+    //             "%s,%s,%s,%s,%f,%s,%d,%s\n",
+    //             $medicion->ruta ?? '',
+    //             $medicion->orden ?? '',
+    //             'OBSA0002', // Categoria fija
+    //             $medicion->nro_cuenta ?? '',
+    //             $medicion->medicion ?? '',
+    //             $medicion->fecha ?? '',
+    //             $medicion->estado_id ?? '',
+    //             'Servicio de Agua' // Tipo de servicio fijo
+    //         );
+
+    //         fwrite($file, $line);
+    //     }
+
+    //     fclose($file);
+
+    //     // Retorna la ruta del archivo generado
+    //     return response()->json([
+    //         'message' => 'Archivo generado con éxito',
+    //         'file' => $filename
+    //     ]);
+    // }
 }
